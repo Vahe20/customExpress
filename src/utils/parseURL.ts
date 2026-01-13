@@ -3,7 +3,7 @@ export const parseURL = (url: string, host: string) => {
 	const urlObj = new URL(url, fullHost);
 
 	const pathname = urlObj.pathname;
-	const query: { [key: string]: string } = {};
+	const query: Record<string, string> = {};
 
 	urlObj.searchParams.forEach((value, key) => {
 		query[key] = value;

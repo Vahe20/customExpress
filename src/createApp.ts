@@ -1,7 +1,7 @@
 import { App, Middleware, Request, Response, RouteHandler } from "./types";
 import http from "http";
 import { parseURL } from "./utils/parseURL";
-import { jsonParser } from "./middlewares/jsonParser";
+import { matchRoute } from "./router/routeMatcher";
 
 const createApp = (): App => {
 	const middlewares: Middleware[] = [];
@@ -17,6 +17,7 @@ const createApp = (): App => {
 		);
 
 		request.query = query;
+		request.params = {};
 
 		response.headers = {};
 
@@ -65,9 +66,19 @@ const createApp = (): App => {
 			res.end(response.body);
 		};
 
-		const route = routes.find(
-			r => r.path === pathname && r.method === request.method
-		);
+		let route: RouteHandler | undefined;
+		let matchedParams: Record<string, string> = {};
+
+		for (const r of routes) {
+			if (r.method === request.method) {
+				const match = matchRoute(r.path, pathname);
+				if (match.matched) {
+					route = r;
+					matchedParams = match.params;
+					break;
+				}
+			}
+		}
 
 		if (!route && middlewares.length === 0) {
 			res.statusCode = 404;
@@ -76,12 +87,30 @@ const createApp = (): App => {
 		}
 
 		const handlers: Middleware[] = [...middlewares];
-		if (route) handlers.push(...route.handlers);
+		if (route) {
+			request.params = matchedParams;
+			handlers.push(...route.handlers);
+		}
 
 		let idx = 0;
-		const next = () => {
+		const next = (err?: any) => {
+			if (err) {
+				res.statusCode = 500;
+				response.json({
+					error: "Internal Server Error",
+					message: err instanceof Error ? err.message : String(err),
+				});
+				return;
+			}
+
 			const handler = handlers[idx++];
-			if (handler) handler(request, response, next);
+			if (handler) {
+				try {
+					handler(request, response, next);
+				} catch (error) {
+					next(error);
+				}
+			}
 		};
 
 		next();
